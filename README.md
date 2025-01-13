@@ -52,21 +52,19 @@
 
 ### Главное окно программы
 
-!
- 
+![Главное окно программы](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/05d442800ef5d61d64828cb1b164f43ef68a7679/main.png)
 
 
 ### Окно с кнопкой "Остановить"
 
-  
+![Окно с кнопкой "Остановить"](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/05d442800ef5d61d64828cb1b164f43ef68a7679/start.png)  
 
 
 ### Окно истории записей
 
- 
-
+![Окно истории записей](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/05d442800ef5d61d64828cb1b164f43ef68a7679/history.png)   
 
 
 ## Результаты тестов
 
- 
+![Результаты тестов](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/05d442800ef5d61d64828cb1b164f43ef68a7679/test.png)    
