@@ -1,10 +1,13 @@
+import os
 import psutil
 import time
 import sqlite3
 import tkinter as tk
-from tkinter import ttk
 from tkinter import messagebox
 import threading
+from queue import Queue
+from tkinter.ttk import Treeview
+
 
 # Настройки приложения
 UPDATE_INTERVAL = 1  # Интервал обновления в секундах
@@ -12,151 +15,189 @@ DB_NAME = "system_data.db"
 
 # Создание базы данных и таблицы
 def create_db():
-    conn = sqlite3.connect(DB_NAME) # Подключается к базе данных
-    cursor = conn.cursor() # Создает курсор для выполнения SQL-запросов
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS system_data (
-            timestamp REAL PRIMARY KEY,
-            cpu_usage REAL,
-            memory_available REAL,
-            memory_total REAL,
-            disk_free REAL,
-            disk_total REAL
-        )
-    """) # Создает таблицу "system_data", если она не существует
-    conn.commit() # Сохраняет изменения в базе данных
-    conn.close() # Закрывает соединение с базой данных
+    if not os.path.exists(DB_NAME):
+        with sqlite3.connect(DB_NAME) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS system_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT,
+                    cpu_usage REAL,
+                    memory_available REAL,
+                    memory_total REAL,
+                    disk_free REAL,
+                    disk_total REAL
+                )
+                """
+            )
+            conn.commit()
 
 # Получение данных о загрузке
 def get_system_data():
-    cpu_usage = psutil.cpu_percent(interval=None) # Получает объект с информацией о загруженности процессора
-    memory_usage = psutil.virtual_memory() # Получает объект с информацией о виртуальной памяти
-    disk_usage = psutil.disk_usage('/') # Получает объект с информацией о дисковом пространстве корневого раздела
+    cpu_usage = psutil.cpu_percent(interval=None)
+    memory_usage = psutil.virtual_memory()
+    disk_usage = psutil.disk_usage('/')
     return cpu_usage, memory_usage, disk_usage
 
-# Обновление данных в интерфейсе
-def update_data():
-    cpu_usage, memory_usage, disk_usage = get_system_data() # Получает данные о загрузке системы
-    cpu_label.config(text=f"ЦП: {cpu_usage:.2f}%") # Обновляет текст метки "ЦП" с использованием полученной загрузки процессора
-    memory_label.config(text=f"ОЗУ: {memory_usage.available / 1024 / 1024 / 1024:.2f}ГБ / {memory_usage.total / 1024 / 1024 / 1024:.2f}ГБ")
-    disk_label.config(text=f"ПЗУ: {disk_usage.free / 1024 /1024 / 1024:.2f}ГБ / {disk_usage.total / 1024 / 1024 / 1024:.2f}ГБ")
-    root.after(int(UPDATE_INTERVAL * 1000), update_data) # Запланирует вызов функции update_data через UPDATE_INTERVAL секунд
+# Класс для приложения
+class SystemMonitorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Уровень загруженности:")
 
-# Запись данных в БД
-def start_recording():
-    global recording, timer_label, start_time # Объявляет переменные как глобальные, чтобы можно было изменять их значения внутри функции
-    if not recording: # Проверяет, не идет ли запись уже
-        recording = True # Устанавливает флаг записи в True
-        start_time = time.time() # Запоминает время начала записи
-        timer_label.config(text="00:00:00") # Устанавливает текст метки таймера в "00:00:00"
-        timer_label.pack() # Делает метку таймера видимой
-        start_button.pack_forget() # Скрывает кнопку "Начать запись"
-        stop_button.pack() # Делает кнопку "Остановить" видимой
-        threading.Thread(target=record_data).start() # Запускает поток для записи данных в базу данных
-    else:
-        messagebox.showinfo("Запись уже идет", "Запись уже идет!") # Выводит сообщение, если запись уже идет
+        self.recording = False
+        self.start_time = None
+        self.data_queue = Queue()
 
-# Остановка записи
-def stop_recording():
-    global recording, timer_label, start_time # Объявляет переменные как глобальные
-    if recording: # Проверяет, идет ли запись
-        recording = False # Устанавливает флаг записи в False
-        stop_button.pack_forget() # Скрывает кнопку "Остановить"
-        start_button.pack() # Делает кнопку "Начать запись" видимой
-        timer_label.pack_forget() # Скрывает метку таймера
-        timer_label.config(text="00:00:00") # Устанавливает текст метки таймера в "00:00:00"
-        start_time = None # Сбрасывает время начала записи
+        # Создание интерфейса
+        self.create_widgets()
+        self.update_task = self.root.after(0, self.update_data)
 
-# Запись данных в БД в отдельном потоке
-def record_data():
-    global recording, timer_label, start_time # Объявляет переменные как глобальные
-    conn = sqlite3.connect(DB_NAME) # Подключается к базе данных
-    cursor = conn.cursor() # Создает курсор для выполнения SQL-запросов
-    while recording: # Цикл, который работает, пока флаг записи recording равен True
-        timestamp = time.strftime("%H:%M:%S") # Получает текущее время в формате "ЧЧ:ММ:СС"
-        cpu_usage, memory_usage, disk_usage = get_system_data() # Получает данные о системе
+    def create_widgets(self):
+        self.cpu_label = tk.Label(self.root, text="ЦП: 0.00%")
+        self.cpu_label.pack()
 
-        # Форматируем данные, чтобы они имели 2 знака после запятой
-        memory_available = round(memory_usage.available / 1024 / 1024 / 1024, 2)
-        memory_total = round(memory_usage.total / 1024 / 1024 / 1024, 2)
-        disk_free = round(disk_usage.free / 1024 / 1024 / 1024, 2)
-        disk_total = round(disk_usage.total / 1024 / 1024 / 1024, 2)
+        self.memory_label = tk.Label(self.root, text="ОЗУ: 0.00ГБ / 0.00ГБ")
+        self.memory_label.pack()
 
-        # Выполняет SQL-запрос для вставки данных в таблицу
-        cursor.execute(
-            "INSERT INTO system_data VALUES (?, ?, ?, ?, ?, ?)",
-            (timestamp, cpu_usage, memory_available, memory_total, disk_free, disk_total),
+        self.disk_label = tk.Label(self.root, text="ПЗУ: 0.00ГБ / 0.00ГБ")
+        self.disk_label.pack()
+
+        self.start_button = tk.Button(self.root, text="Начать запись", command=self.start_recording)
+        self.start_button.pack()
+
+        self.stop_button = tk.Button(self.root, text="Остановить", command=self.stop_recording)
+        self.stop_button.pack_forget()
+
+        self.timer_label = tk.Label(self.root, text="00:00:00")
+        self.timer_label.pack_forget()
+
+        self.history_button = tk.Button(self.root, text="История", command=self.show_history)
+        self.history_button.pack()
+
+    def update_data(self):
+        cpu_usage, memory_usage, disk_usage = get_system_data()
+        self.cpu_label.config(text=f"ЦП: {cpu_usage:.2f}%")
+        self.memory_label.config(
+            text=f"ОЗУ: {memory_usage.available / 1024 / 1024 / 1024:.2f}ГБ / {memory_usage.total / 1024 / 1024 / 1024:.2f}ГБ"
         )
-        conn.commit() # Сохраняет изменения в базе данных
-        elapsed_time = time.time() - start_time # Вычисляет время, прошедшее с начала записи
-        minutes, seconds = divmod(int(elapsed_time), 60) # Преобразует время в минуты и секунды
-        hours, minutes = divmod(minutes, 60) # Преобразует время в часы и минуты
-        timer_label.config(text=f"{hours:02}:{minutes:02}:{seconds:02}") # Обновляет текст метки таймера
-        time.sleep(UPDATE_INTERVAL) # Останавливает поток на `UPDATE_INTERVAL` секунд
-    conn.close() # Закрывает соединение с базой данных
-
-# Просмотр истории
-def show_history():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor() # Создает курсор для выполнения SQL-запросов
-    cursor.execute("SELECT * FROM system_data") # Выполняет SQL-запрос для получения всех данных из таблицы
-    data = cursor.fetchall() # Получает все строки данных из таблицы
-    conn.close() # Закрывает соединение с базой данных
-
-    history_window = tk.Toplevel(root) # Создает новое окно поверх основного окна
-    history_window.title("История записи") # Устанавливает заголовок окна
-    tree = ttk.Treeview(history_window, columns=("timestamp", "cpu_usage", "memory_available", "memory_total",
-                    "disk_free", "disk_total"), show="headings") # Создает деревовидный виджет для отображения данных
-    tree.heading("timestamp", text="Время") # Устанавливает заголовок столбца "timestamp"
-    tree.heading("cpu_usage", text="ЦП")
-    tree.heading("memory_available", text="ОЗУ (свободное)")
-    tree.heading("memory_total", text="ОЗУ (всего)")
-    tree.heading("disk_free", text="ПЗУ (свободное)")
-    tree.heading("disk_total", text="ПЗУ (всего)")
-    for row in data: # Цикл по каждой строке данных
-        formatted_row = (
-            row[0], # Время
-            f"{row[1]:.2f}", # Загрузка процессора (с двумя знаками после запятой)
-            f"{row[2]:.2f}",
-            f"{row[3]:.2f}",
-            f"{row[4]:.2f}",
-            f"{row[5]:.2f}",
+        self.disk_label.config(
+            text=f"ПЗУ: {disk_usage.free / 1024 / 1024 / 1024:.2f}ГБ / {disk_usage.total / 1024 / 1024 / 1024:.2f}ГБ"
         )
-        tree.insert("", tk.END, values=formatted_row) # Вставляет строку данных в деревовидный виджет
-    tree.pack() # Делает деревовидный виджет видимым
+        self.update_task = self.root.after(int(UPDATE_INTERVAL * 1000), self.update_data)
 
-# Создание главного окна
-root = tk.Tk() # Создает главное окно приложения
-root.title("Уровень загруженности:") # Устанавливает заголовок окна
+    def stop_update(self):
+        if self.update_task:
+            self.root.after_cancel(self.update_task)
+            self.update_task = None
 
-# Создание элементов интерфейса
-cpu_label = tk.Label(root, text="ЦП: 0.00%") # Создает метку для отображения загрузки процессора
-cpu_label.pack() # Размещает метку в окне
-memory_label = tk.Label(root, text="ОЗУ: 0.00ГБ / 0.00ГБ")
-memory_label.pack()
-disk_label = tk.Label(root, text="ПЗУ: 0.00ГБ / 0.00ГБ")
-disk_label.pack()
+    def start_recording(self):
+        if not self.recording:
+            self.recording = True
+            self.start_time = time.time()
+            self.timer_label.config(text="00:00:00")
+            self.timer_label.pack()
+            self.start_button.pack_forget()
+            self.stop_button.pack()
+            self.record_thread = threading.Thread(target=self.record_data, daemon=True)
+            self.record_thread.start()
+        else:
+            messagebox.showinfo("Запись уже идет", "Запись уже идет!")
 
-start_button = tk.Button(root, text="Начать запись", command=start_recording) # Создает кнопку "Начать запись"
-start_button.pack() # Размещает кнопку в окне
-stop_button = tk.Button(root, text="Остановить", command=stop_recording) # Создает кнопку "Остановить"
-stop_button.pack_forget() # Скрывает кнопку "Остановить" по умолчанию
+    def stop_recording(self):
+        if self.recording:
+            self.recording = False
+            self.stop_button.pack_forget()
+            self.start_button.pack()
+            self.timer_label.pack_forget()
+            self.timer_label.config(text="00:00:00")
+            self.start_time = None
 
-timer_label = tk.Label(root, text="00:00:00") # Создает метку для отображения таймера
-timer_label.pack_forget() # Скрывает метку таймера по умолчанию
+    def record_data(self):
+        with sqlite3.connect(DB_NAME) as conn:
+            cursor = conn.cursor()
+            while self.recording:
+                #timestamp = time.time()
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                cpu_usage, memory_usage, disk_usage = get_system_data()
 
-history_button = tk.Button(root, text="История", command=show_history) # Создает кнопку "История"
-history_button.pack() # Размещает кнопку в окне
+                memory_available = round(memory_usage.available / 1024 / 1024 / 1024, 2)
+                memory_total = round(memory_usage.total / 1024 / 1024 / 1024, 2)
+                disk_free = round(disk_usage.free / 1024 / 1024 / 1024, 2)
+                disk_total = round(disk_usage.total / 1024 / 1024 / 1024, 2)
 
-# Инициализация записи
-recording = False # Устанавливает флаг записи в False по умолчанию
-start_time = 0 # Инициализирует время начала записи как 0
+                try:
+                    cursor.execute(
+                        "INSERT INTO system_data (timestamp, cpu_usage, memory_available, memory_total, disk_free, disk_total) VALUES (?, ?, ?, ?, ?, ?)",
+                        (timestamp, cpu_usage, memory_available, memory_total, disk_free, disk_total),
+                    )
+                    conn.commit()
+                except sqlite3.Error as e:
+                    print(f"Ошибка записи в базу данных: {e}")
+
+                elapsed_time = time.time() - self.start_time
+                minutes, seconds = divmod(int(elapsed_time), 60)
+                hours, minutes = divmod(minutes, 60)
+                self.data_queue.put(f"{hours:02}:{minutes:02}:{seconds:02}")
+                self.root.after(0, self.update_timer)
+                time.sleep(UPDATE_INTERVAL)
+
+    def update_timer(self):
+        while not self.data_queue.empty():
+            self.timer_label.config(text=self.data_queue.get())
+
+    def show_history(self):
+        with sqlite3.connect(DB_NAME) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM system_data")
+            data = cursor.fetchall()
+
+            # Логирование данных из базы
+            print(f"Полученные данные из базы данных: {data}")
+
+            if not data:
+                messagebox.showinfo("История", "Нет данных для отображения.")
+                return
+
+        self.history_window = tk.Toplevel(self.root)
+        self.history_window.title("История записи")
+
+        self.tree = Treeview(
+            self.history_window,
+            columns=("id", "timestamp", "cpu_usage", "memory_available", "memory_total", "disk_free", "disk_total"),
+            show="headings",
+        )
+
+        self.tree.heading("id", text="ID")
+        self.tree.heading("timestamp", text="Время записи")
+        self.tree.heading("cpu_usage", text="ЦП")
+        self.tree.heading("memory_available", text="ОЗУ (свободное)")
+        self.tree.heading("memory_total", text="ОЗУ (всего)")
+        self.tree.heading("disk_free", text="ПЗУ (свободное)")
+        self.tree.heading("disk_total", text="ПЗУ (всего)")
+
+        # Вставка данных в Treeview
+        for row in data:
+            formatted_row = (
+                row[0],
+                row[1],
+                f"{row[2]:.2f}",
+                f"{row[3]:.2f}",
+                f"{row[4]:.2f}",
+                f"{row[5]:.2f}",
+                f"{row[6]:.2f}",
+            )
+            self.tree.insert("", tk.END, values=formatted_row)
+
+        self.tree.pack()
+
 
 # Создание базы данных
-create_db()# Вызывает функцию для создания базы данных
-
-# Запуск обновления данных
-update_data() # Вызывает функцию для обновления данных в интерфейсе
+create_db()
 
 # Запуск приложения
-root.mainloop() # Запускает главный цикл приложения Tkinter
+root = tk.Tk()
+app = SystemMonitorApp(root)
+root.protocol("WM_DELETE_WINDOW", lambda: (app.stop_update(), root.destroy()))
+root.mainloop()
