@@ -52,19 +52,19 @@
 
 ### Главное окно программы
 
-![Главное окно программы](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/ffeb9d10294cab621427bdecd4de851426ed6469/main.PNG)
+![Главное окно программы](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/d9da9e473cfef01745e0a4351218a22a74fad4d2/main.PNG)
 
 
 ### Окно с кнопкой "Остановить"
 
-![Окно с кнопкой "Остановить"](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/ffeb9d10294cab621427bdecd4de851426ed6469/start.PNG)  
+![Окно с кнопкой "Остановить"](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/d9da9e473cfef01745e0a4351218a22a74fad4d2/start.PNG)  
 
 
 ### Окно истории записей
 
-![Окно истории записей](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/ffeb9d10294cab621427bdecd4de851426ed6469/history.PNG)   
+![Окно истории записей](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/d9da9e473cfef01745e0a4351218a22a74fad4d2/history.PNG)   
 
 
 ## Результаты тестов
 
-![Результаты тестов](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/ffeb9d10294cab621427bdecd4de851426ed6469/test.PNG)    
+![Результаты тестов](https://raw.githubusercontent.com/imAlxndr/tz_avtomotiv/d9da9e473cfef01745e0a4351218a22a74fad4d2/test.PNG)    
